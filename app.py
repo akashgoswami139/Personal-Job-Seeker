@@ -1,4 +1,5 @@
 import importlib
+import re
 import sys
 from io import BytesIO
 from unittest.mock import patch
@@ -171,6 +172,19 @@ def get_agent_response(role_value: str, experience_value: str) -> str:
     return extract_text(raw)
 
 
+def extract_url(value: str) -> str:
+    """Pull a plain URL out of a cell that may be markdown-formatted as [text](url)."""
+    if not value:
+        return ""
+    match = re.search(r"\((https?://[^\s)]+)\)", value)
+    if match:
+        return match.group(1)
+    match = re.search(r"(https?://\S+)", value)
+    if match:
+        return match.group(1).rstrip(").,")
+    return value.strip()
+
+
 def parse_rows(text: str):
     def split_row(line: str):
         line = line.strip()
@@ -203,6 +217,9 @@ def build_pdf(rows, role_value: str, experience_value: str) -> bytes:
     )
     styles = getSampleStyleSheet()
     cell_style = ParagraphStyle("cell", parent=styles["Normal"], fontSize=8.5, leading=11)
+    link_style = ParagraphStyle(
+        "link", parent=cell_style, textColor=colors.HexColor("#4A4FD1"), underlineWidth=1
+    )
     header_style = ParagraphStyle(
         "header", parent=styles["Normal"], fontSize=9, leading=12,
         textColor=colors.white, fontName="Helvetica-Bold",
@@ -216,12 +233,16 @@ def build_pdf(rows, role_value: str, experience_value: str) -> bytes:
 
     table_data = [[Paragraph(h, header_style) for h in ["Company", "Role", "Experience", "Direct Apply"]]]
     for row in rows:
-        apply_url = row.get("direct apply") or row.get("apply") or ""
+        apply_url = extract_url(row.get("direct apply") or row.get("apply") or "")
+        if apply_url.startswith("http"):
+            apply_cell = Paragraph(f'<link href="{apply_url}"><u>Apply</u></link>', link_style)
+        else:
+            apply_cell = Paragraph(apply_url or "-", cell_style)
         table_data.append([
             Paragraph(row.get("company", ""), cell_style),
             Paragraph(row.get("role", ""), cell_style),
             Paragraph(row.get("experience", ""), cell_style),
-            Paragraph(apply_url, cell_style),
+            apply_cell,
         ])
 
     table = Table(table_data, colWidths=[150, 100, 90, 170])
@@ -272,7 +293,7 @@ if rows is not None:
             company = row.get("company", "")
             job_role = row.get("role", "")
             exp = row.get("experience", "")
-            apply_url = row.get("direct apply") or row.get("apply") or ""
+            apply_url = extract_url(row.get("direct apply") or row.get("apply") or "")
 
             cols = st.columns([3, 2, 2, 2])
             cols[0].markdown(f'<div class="result-row">{company}</div>', unsafe_allow_html=True)
