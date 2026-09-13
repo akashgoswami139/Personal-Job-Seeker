@@ -3,6 +3,7 @@ import re
 import sys
 from io import BytesIO
 from unittest.mock import patch
+from xml.sax.saxutils import escape as xml_escape
 
 import streamlit as st
 from reportlab.lib import colors
@@ -206,6 +207,8 @@ def parse_rows(text: str):
             continue  # markdown separator row, e.g. ---|---|---
         if len(cells) != len(header):
             continue
+        if any("akash goswami" in c.lower() for c in cells):
+            continue  # the model's mandatory sign-off line, not a real job row
         rows.append(dict(zip(header, cells)))
     return rows
 
@@ -235,13 +238,14 @@ def build_pdf(rows, role_value: str, experience_value: str) -> bytes:
     for row in rows:
         apply_url = extract_url(row.get("direct apply") or row.get("apply") or "")
         if apply_url.startswith("http"):
-            apply_cell = Paragraph(f'<link href="{apply_url}"><u>Apply</u></link>', link_style)
+            safe_href = xml_escape(apply_url)
+            apply_cell = Paragraph(f'<link href="{safe_href}"><u>Apply</u></link>', link_style)
         else:
-            apply_cell = Paragraph(apply_url or "-", cell_style)
+            apply_cell = Paragraph(xml_escape(apply_url) or "-", cell_style)
         table_data.append([
-            Paragraph(row.get("company", ""), cell_style),
-            Paragraph(row.get("role", ""), cell_style),
-            Paragraph(row.get("experience", ""), cell_style),
+            Paragraph(xml_escape(row.get("company", "")), cell_style),
+            Paragraph(xml_escape(row.get("role", "")), cell_style),
+            Paragraph(xml_escape(row.get("experience", "")), cell_style),
             apply_cell,
         ])
 
@@ -304,13 +308,16 @@ if rows is not None:
                     st.link_button("Direct Apply", apply_url, key=f"apply_{i}")
 
         st.write("")
-        pdf_bytes = build_pdf(rows, st.session_state["results_role"], st.session_state["results_experience"])
-        st.download_button(
-            "Download as PDF",
-            data=pdf_bytes,
-            file_name="personal_job_seeker_results.pdf",
-            mime="application/pdf",
-        )
+        try:
+            pdf_bytes = build_pdf(rows, st.session_state["results_role"], st.session_state["results_experience"])
+            st.download_button(
+                "Download as PDF",
+                data=pdf_bytes,
+                file_name="personal_job_seeker_results.pdf",
+                mime="application/pdf",
+            )
+        except Exception:
+            st.warning("Results are shown above, but the PDF couldn't be generated for this search.")
 
 st.markdown(
     '<div class="app-footer"><span class="heart">&#10084;&#65039;</span> Built by Akash Goswami '
