@@ -1143,15 +1143,15 @@ if rejected:
     # PDF
     # --------------------------------------------------------
 
-    if rows:
+if rows:
 
-        pdf = create_pdf(
+    pdf = create_pdf(
             rows,
             search_role,
             search_experience,
         )
 
-        st.download_button(
+    st.download_button(
             label="📄 Download Job Report",
             data=pdf,
             file_name="personal_job_seeker_report.pdf",
